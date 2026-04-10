@@ -274,7 +274,7 @@ class TestStep:
 
     def test_reward_in_range(self, env_easy):
         _, r, _, _ = env_easy.step(Action(action_type="no_op"))
-        assert 0.0 <= r <= 1.0
+        assert 0.0 < r < 1.0
 
     def test_add_comment_stored_correctly(self, env_easy):
         obs, _, _, _ = env_easy.step(Action(
@@ -682,13 +682,13 @@ class TestGrader:
         )
         state.done = False
         ir = intermediate_reward(state)
-        assert 0.0 <= ir <= 0.30 + 1e-6
+        assert 0.0 < ir < 0.30 + 1e-6
 
-    def test_intermediate_reward_zero_for_no_progress(self):
+    def test_intermediate_reward_strictly_positive_for_no_progress(self):
         state = _make_state(decision=None)
         state.done = False
         ir = intermediate_reward(state)
-        assert ir == 0.0
+        assert 0.0 < ir < 0.30
 
     def test_unknown_task_raises(self):
         state = _make_state()
@@ -849,4 +849,4 @@ class TestFullEpisodes:
         env.reset("simple-bug-detection")
         _, r, done, _ = env.step(Action(action_type="no_op"))
         assert done is False
-        assert r <= 0.31
+        assert 0.0 < r <= 0.31

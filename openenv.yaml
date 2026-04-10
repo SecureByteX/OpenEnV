@@ -36,5 +36,5 @@ action_space:
   type: object
   description: add_comment, flag_security_issue, suggest_fix, approve, request_changes, no_op
 
-reward_range: [0.0, 1.0]
+reward_range: [0.0001, 0.9999]
 episode_length: 20

@@ -25,6 +25,8 @@ from server.models import EnvironmentState, Reward
 TOLERANCE = 3
 MIN_TERMINAL_SCORE = 0.0001
 MAX_TERMINAL_SCORE = 0.9999
+MIN_INTERMEDIATE_SCORE = 0.0001
+MAX_INTERMEDIATE_SCORE = 0.2999
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +67,11 @@ def clamp_terminal_score(raw: float) -> float:
     return max(MIN_TERMINAL_SCORE, min(MAX_TERMINAL_SCORE, raw))
 
 
+def clamp_intermediate_score(raw: float) -> float:
+    """Keep dense rewards strictly inside (0, 0.30) for validator compatibility."""
+    return max(MIN_INTERMEDIATE_SCORE, min(MAX_INTERMEDIATE_SCORE, raw))
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -85,7 +92,7 @@ def grade(state: EnvironmentState) -> Reward:
 def intermediate_reward(state: EnvironmentState) -> float:
     """Dense per-step reward = current_score * 0.30, capped at 0.30."""
     r = grade(state)
-    return round(min(r.value * 0.30, 0.30), 4)
+    return round(clamp_intermediate_score(r.value * 0.30), 4)
 
 
 # ---------------------------------------------------------------------------
