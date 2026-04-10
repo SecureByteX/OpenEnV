@@ -24,9 +24,12 @@ from __future__ import annotations
 
 import json
 import os
+import socket
+import subprocess
 import sys
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import requests
 from openai import OpenAI
@@ -35,16 +38,26 @@ from openai import OpenAI
 # Configuration (all from environment variables)
 # ---------------------------------------------------------------------------
 
-API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:7860").rstrip("/")
+DEFAULT_ENV_BASE_URL = "http://127.0.0.1:7860"
+ENV_BASE_URL: str = (
+    os.getenv("ENV_BASE_URL")
+    or os.getenv("OPENENV_BASE_URL")
+    or os.getenv("API_BASE_URL")
+    or DEFAULT_ENV_BASE_URL
+).rstrip("/")
 MODEL_NAME:   str = os.getenv("MODEL_NAME",   "gpt-4o")
 OPENAI_KEY:   str = os.getenv("OPENAI_API_KEY", "")
 HF_TOKEN:     str = os.getenv("HF_TOKEN", "")
 LOCAL_IMAGE_NAME: str = os.getenv("LOCAL_IMAGE_NAME", "code-review-env")
+OPENAI_BASE_URL: Optional[str] = os.getenv("OPENAI_BASE_URL")
 
 ENV_NAME = "code-review-env"
 TASKS    = ["simple-bug-detection", "security-audit", "architecture-review"]
 
-client = OpenAI(api_key=OPENAI_KEY or "placeholder")
+client_kwargs: Dict[str, Any] = {"api_key": OPENAI_KEY or "placeholder"}
+if OPENAI_BASE_URL:
+    client_kwargs["base_url"] = OPENAI_BASE_URL
+client = OpenAI(**client_kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +73,7 @@ def _headers() -> Dict[str, str]:
 
 def env_reset(task_name: str) -> Dict[str, Any]:
     r = requests.post(
-        f"{API_BASE_URL}/reset",
+        f"{ENV_BASE_URL}/reset",
         json={"task_name": task_name},
         headers=_headers(),
         timeout=30,
@@ -71,7 +84,7 @@ def env_reset(task_name: str) -> Dict[str, Any]:
 
 def env_step(action: Dict[str, Any]) -> Dict[str, Any]:
     r = requests.post(
-        f"{API_BASE_URL}/step",
+        f"{ENV_BASE_URL}/step",
         json=action,
         headers=_headers(),
         timeout=30,
@@ -82,10 +95,77 @@ def env_step(action: Dict[str, Any]) -> Dict[str, Any]:
 
 def env_health() -> bool:
     try:
-        r = requests.get(f"{API_BASE_URL}/health", timeout=10)
+        r = requests.get(f"{ENV_BASE_URL}/health", timeout=10)
         return r.status_code == 200
     except Exception:
         return False
+
+
+def _port_open(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def _candidate_env_urls() -> List[str]:
+    candidates = [ENV_BASE_URL]
+    if ENV_BASE_URL != DEFAULT_ENV_BASE_URL:
+        candidates.append(DEFAULT_ENV_BASE_URL)
+    return candidates
+
+
+def ensure_environment() -> Optional[subprocess.Popen]:
+    """Return a server process if one was started locally, else None."""
+    global ENV_BASE_URL
+
+    for candidate in _candidate_env_urls():
+        ENV_BASE_URL = candidate
+        if env_health():
+            return None
+
+    host = "127.0.0.1"
+    port = 7860
+    if _port_open(host, port):
+        ENV_BASE_URL = DEFAULT_ENV_BASE_URL
+        for _ in range(10):
+            if env_health():
+                return None
+            time.sleep(1)
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "server.app:app",
+            "--host",
+            host,
+            "--port",
+            str(port),
+            "--workers",
+            "1",
+            "--log-level",
+            "warning",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env={**os.environ, "PYTHONPATH": os.getcwd()},
+    )
+
+    ENV_BASE_URL = DEFAULT_ENV_BASE_URL
+    for _ in range(30):
+        if env_health():
+            return proc
+        time.sleep(1)
+
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +381,38 @@ def main() -> None:
     for task in TASKS:
         run_episode(task)
         time.sleep(1)
+
+
+def main() -> None:
+    server_proc: Optional[subprocess.Popen] = None
+    try:
+        server_proc = ensure_environment()
+        if not env_health():
+            print(
+                f"ERROR: Cannot reach environment at {ENV_BASE_URL}",
+                file=sys.stderr,
+            )
+            print(
+                "Inference will exit gracefully after failing to initialize the env.",
+                file=sys.stderr,
+            )
+            print("[END] success=false steps=0 rewards=0.00", flush=True)
+            return
+
+        print("# CodeReview OpenEnv - baseline inference", flush=True)
+        print(f"# server={ENV_BASE_URL}  model={MODEL_NAME}", flush=True)
+        print("", flush=True)
+
+        for task in TASKS:
+            run_episode(task)
+            time.sleep(1)
+    finally:
+        if server_proc is not None and server_proc.poll() is None:
+            server_proc.terminate()
+            try:
+                server_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                server_proc.kill()
 
 
 if __name__ == "__main__":
