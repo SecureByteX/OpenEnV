@@ -48,6 +48,7 @@ LLM_API_KEY:  str = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY", "")
 LLM_BASE_URL: Optional[str] = os.getenv("API_BASE_URL") or os.getenv("OPENAI_BASE_URL")
 HF_TOKEN:     str = os.getenv("HF_TOKEN", "")
 LOCAL_IMAGE_NAME: str = os.getenv("LOCAL_IMAGE_NAME", "code-review-env")
+FAILURE_REWARD = 0.001
 
 ENV_NAME = "code-review-env"
 TASKS    = ["simple-bug-detection", "security-audit", "architecture-review"]
@@ -56,6 +57,12 @@ client_kwargs: Dict[str, Any] = {"api_key": LLM_API_KEY or "placeholder"}
 if LLM_BASE_URL:
     client_kwargs["base_url"] = LLM_BASE_URL
 client = OpenAI(**client_kwargs)
+
+
+def _single_line(value: Any) -> str:
+    """Normalize arbitrary values into one validator-safe log token."""
+    text = str(value)
+    return " ".join(text.split()) if text else "null"
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +319,7 @@ def run_episode(task_name: str) -> None:
                 obs    = result["observation"]
                 err    = obs.get("last_action_error") or None
             except Exception as exc:
-                reward, done, err = 0.0001, False, str(exc)
+                reward, done, err = FAILURE_REWARD, False, _single_line(exc)
 
             rewards.append(reward)
             steps = turn
@@ -324,7 +331,7 @@ def run_episode(task_name: str) -> None:
 
             # [STEP]
             action_str = json.dumps(action_dict, separators=(",", ":"))
-            error_str  = err if err else "null"
+            error_str  = _single_line(err) if err else "null"
             print(
                 f"[STEP] step={turn}"
                 f" action={action_str}"
@@ -340,9 +347,9 @@ def run_episode(task_name: str) -> None:
 
     except Exception as exc:
         if not rewards:
-            rewards.append(0.0001)
+            rewards.append(FAILURE_REWARD)
         print(
-            f"[STEP] step={steps + 1} action={{}} reward=0.0001 done=false error={exc}",
+            f"[STEP] step={steps + 1} action={{}} reward={FAILURE_REWARD:.4f} done=false error={_single_line(exc)}",
             flush=True,
         )
 
@@ -360,27 +367,6 @@ def run_episode(task_name: str) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def _unused_legacy_main() -> None:
-    if not env_health():
-        print(
-            f"ERROR: Cannot reach environment at {API_BASE_URL}",
-            file=sys.stderr,
-        )
-        print(
-            "Start the server first:  ./run_local.sh server",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    print("# CodeReview OpenEnv — baseline inference", flush=True)
-    print(f"# server={API_BASE_URL}  model={MODEL_NAME}", flush=True)
-    print("", flush=True)
-
-    for task in TASKS:
-        run_episode(task)
-        time.sleep(1)
-
-
 def main() -> None:
     server_proc: Optional[subprocess.Popen] = None
     try:
@@ -394,12 +380,8 @@ def main() -> None:
                 "Inference will exit gracefully after failing to initialize the env.",
                 file=sys.stderr,
             )
-            print("[END] success=false steps=0 rewards=0.0001", flush=True)
+            print(f"[END] success=false steps=0 rewards={FAILURE_REWARD:.4f}", flush=True)
             return
-
-        print("# CodeReview OpenEnv - baseline inference", flush=True)
-        print(f"# server={ENV_BASE_URL}  model={MODEL_NAME}", flush=True)
-        print("", flush=True)
 
         for task in TASKS:
             run_episode(task)
