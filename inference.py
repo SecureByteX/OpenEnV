@@ -307,7 +307,7 @@ def run_episode(task_name: str) -> None:
 
             try:
                 result = env_step(action_dict)
-                reward = round(float(result["reward"]), 2)
+                reward = round(float(result["reward"]), 4)
                 done   = bool(result["done"])
                 obs    = result["observation"]
                 err    = obs.get("last_action_error") or None
@@ -328,7 +328,7 @@ def run_episode(task_name: str) -> None:
             print(
                 f"[STEP] step={turn}"
                 f" action={action_str}"
-                f" reward={reward:.2f}"
+                f" reward={reward:.4f}"
                 f" done={'true' if done else 'false'}"
                 f" error={error_str}",
                 flush=True,
@@ -340,14 +340,14 @@ def run_episode(task_name: str) -> None:
 
     except Exception as exc:
         if not rewards:
-            rewards.append(0.0)
+            rewards.append(0.0001)
         print(
-            f"[STEP] step={steps + 1} action={{}} reward=0.00 done=false error={exc}",
+            f"[STEP] step={steps + 1} action={{}} reward=0.0001 done=false error={exc}",
             flush=True,
         )
 
     # [END]
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    rewards_str = ",".join(f"{r:.4f}" for r in rewards)
     print(
         f"[END] success={'true' if success else 'false'}"
         f" steps={steps}"
