@@ -517,6 +517,29 @@ class TestGraderHelpers:
 # ---------------------------------------------------------------------------
 
 class TestGrader:
+    def test_terminal_scores_are_strictly_between_zero_and_one(self):
+        for task_name in TASKS:
+            low = grade(_make_state(task_name, comments=[], decision="approved"))
+            high = grade(_make_state(
+                task_name,
+                comments=[
+                    ReviewComment(line=6, message="hardcoded secret key environment variable", severity="critical"),
+                    ReviewComment(line=15, message="md5 broken password hashing use bcrypt", severity="critical"),
+                    ReviewComment(line=21, message="sql injection parameterized query", severity="critical"),
+                    ReviewComment(line=51, message="race condition stock deduction not atomic concurrent oversell lock", severity="critical"),
+                    ReviewComment(line=64, message="no rollback payment fails stock inventory corrupted revert", severity="critical"),
+                    ReviewComment(line=78, message="thread unsafe results list shared concurrent append mutex lock", severity="error"),
+                    ReviewComment(line=8, message="unbounded memory leak cache lru eviction bounded"),
+                    ReviewComment(line=62, message="blocking sleep stall retry thread pool async backoff"),
+                    ReviewComment(line=6, message="ZeroDivisionError empty list division zero", severity="error"),
+                    ReviewComment(line=17, message="duplicate multiple times set 3+", severity="warning"),
+                    ReviewComment(line=22, message="syntax assignment instead of comparison ==", severity="error"),
+                ],
+                decision="changes_requested",
+            ))
+            assert 0.0 < low.value < 1.0
+            assert 0.0 < high.value < 1.0
+
     def test_reward_always_in_range_all_tasks(self):
         """Critical: grader must always produce 0.0-1.0, never fixed value."""
         for task_name in TASKS:

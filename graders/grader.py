@@ -23,6 +23,8 @@ from typing import Any, Dict, List
 from server.models import EnvironmentState, Reward
 
 TOLERANCE = 3
+MIN_TERMINAL_SCORE = 0.0001
+MAX_TERMINAL_SCORE = 0.9999
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +58,11 @@ def false_positives(comments, all_gt: List[Dict[str, Any]]) -> int:
         ):
             fp += 1
     return fp
+
+
+def clamp_terminal_score(raw: float) -> float:
+    """Keep terminal scores strictly inside (0, 1) for validator compatibility."""
+    return max(MIN_TERMINAL_SCORE, min(MAX_TERMINAL_SCORE, raw))
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +117,7 @@ def _grade_task1(state: EnvironmentState) -> Reward:
     efficiency = round(max(0.0, 0.10 * (1.0 - step_ratio)), 4) if state.done else 0.0
 
     raw = bugs_score * 0.80 + decision_bonus + efficiency - fp_penalty
-    value = max(0.0, min(1.0, raw))
+    value = clamp_terminal_score(raw)
 
     return Reward(
         value=round(value, 4),
@@ -152,7 +159,7 @@ def _grade_task2(state: EnvironmentState) -> Reward:
     decision_bonus = 0.05 if state.review_decision == "changes_requested" else 0.0
 
     raw = sec_score * 0.65 + bug_score * 0.25 + severity_bonus + decision_bonus - fp_penalty
-    value = max(0.0, min(1.0, raw))
+    value = clamp_terminal_score(raw)
 
     return Reward(
         value=round(value, 4),
@@ -197,7 +204,7 @@ def _grade_task3(state: EnvironmentState) -> Reward:
     decision_bonus = 0.05 if state.review_decision == "changes_requested" else 0.0
 
     raw = coverage * 0.75 + concurrency_bonus + rollback_bonus + decision_bonus - fp_penalty
-    value = max(0.0, min(1.0, raw))
+    value = clamp_terminal_score(raw)
 
     return Reward(
         value=round(value, 4),
