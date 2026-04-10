@@ -3,8 +3,8 @@ graders/grader.py
 Deterministic graders for CodeReview OpenEnv.
 
 Public API:
-    grade(state)               -> Reward   (0.0-1.0, terminal)
-    intermediate_reward(state) -> float    (0.0-0.30, per-step)
+    grade(state)               -> Reward   ((0.0, 1.0), terminal)
+    intermediate_reward(state) -> float    ((0.0, 0.30), per-step)
 
 Matching:
     comment matches issue when BOTH:
@@ -106,7 +106,7 @@ def _grade_task1(state: EnvironmentState) -> Reward:
     m_bugs = matched_ids(state.comments_made, bugs)
     fp = false_positives(state.comments_made, all_gt)
 
-    # Bugs found score (0.0-1.0), varies with each bug found
+    # Bugs found score (0.0-1.0 internally), varies with each bug found
     bugs_score = len(m_bugs) / len(bugs) if bugs else 1.0
 
     # FP penalty varies continuously

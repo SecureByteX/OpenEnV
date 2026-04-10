@@ -91,9 +91,16 @@ class TestModels:
             assert a.action_type == at
 
     def test_reward_valid_range(self):
-        for v in (0.0, 0.5, 1.0):
+        for v in (0.0001, 0.5, 0.9999):
             r = Reward(value=v)
-            assert 0.0 <= r.value <= 1.0
+            assert 0.0 < r.value < 1.0
+
+    def test_reward_open_interval_rejects_endpoints(self):
+        with pytest.raises(Exception):
+            Reward(value=0.0)
+
+        with pytest.raises(Exception):
+            Reward(value=1.0)
 
     def test_reward_too_high_raises(self):
         with pytest.raises(Exception):
@@ -541,7 +548,7 @@ class TestGrader:
             assert 0.0 < high.value < 1.0
 
     def test_reward_always_in_range_all_tasks(self):
-        """Critical: grader must always produce 0.0-1.0, never fixed value."""
+        """Critical: grader must always produce values strictly inside (0, 1)."""
         for task_name in TASKS:
             for n in (0, 1, 2, 5, 10, 20):
                 comments = [
@@ -549,7 +556,7 @@ class TestGrader:
                     for i in range(n)
                 ]
                 r = grade(_make_state(task_name, comments=comments, decision="request_changes"))
-                assert 0.0 <= r.value <= 1.0, \
+                assert 0.0 < r.value < 1.0, \
                     f"reward={r.value} out of range for {task_name} with {n} comments"
 
     def test_reward_varies_with_comments(self):

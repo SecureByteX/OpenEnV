@@ -65,7 +65,7 @@ VALID_ACTION_TYPES = {
 
 
 class Reward(BaseModel):
-    value: float = Field(..., ge=0.0, le=1.0)
+    value: float = Field(..., gt=0.0, lt=1.0)
     done: bool = False
     bugs_found_score: float = 0.0
     security_score: float = 0.0

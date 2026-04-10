@@ -221,7 +221,7 @@ openenv-code-review/
 │   └── definitions.py     3 tasks with ground truth
 ├── graders/
 │   ├── __init__.py
-│   └── grader.py          Deterministic graders (0.0–1.0)
+│   └── grader.py          Deterministic graders ((0.0, 1.0))
 ├── static/
 │   └── index.html         Interactive demo UI
 ├── tests/
@@ -290,7 +290,7 @@ curl -X POST http://localhost:7860/reset -H "Content-Type: application/json" -d 
 - [x] Real-world task (code review — done daily by every software team)
 - [x] Full OpenEnv spec: Pydantic models, `reset()`/`step()`/`state()`, `openenv.yaml`
 - [x] 3 tasks: easy → medium → hard with deterministic programmatic graders
-- [x] Graders return **varying** scores 0.0–1.0 (never constant — no disqualification risk)
+- [x] Graders return **varying** scores strictly inside `(0, 1)` (never constant and never exact endpoints)
 - [x] Dense reward every step (not sparse binary)
 - [x] `inference.py` with exact `[START]`/`[STEP]`/`[END]` stdout format
 - [x] Working `Dockerfile` (runs tests at build time — fails if tests fail)
