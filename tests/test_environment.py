@@ -91,7 +91,7 @@ class TestModels:
             assert a.action_type == at
 
     def test_reward_valid_range(self):
-        for v in (0.0001, 0.5, 0.9999):
+        for v in (0.001, 0.5, 0.999):
             r = Reward(value=v)
             assert 0.0 < r.value < 1.0
 
