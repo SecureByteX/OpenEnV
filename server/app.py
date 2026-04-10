@@ -199,3 +199,17 @@ else:
             "state": "GET /state",
             "health": "GET /health",
         })
+
+
+def main() -> None:
+    """Run the API server for local or script-based entry points."""
+    import uvicorn
+
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "7860"))
+    log_level = os.getenv("LOG_LEVEL", "info")
+    uvicorn.run("server.app:app", host=host, port=port, workers=1, log_level=log_level)
+
+
+if __name__ == "__main__":
+    main()
