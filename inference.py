@@ -29,7 +29,6 @@ import subprocess
 import sys
 import time
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
 
 import requests
 from openai import OpenAI
@@ -42,21 +41,20 @@ DEFAULT_ENV_BASE_URL = "http://127.0.0.1:7860"
 ENV_BASE_URL: str = (
     os.getenv("ENV_BASE_URL")
     or os.getenv("OPENENV_BASE_URL")
-    or os.getenv("API_BASE_URL")
     or DEFAULT_ENV_BASE_URL
 ).rstrip("/")
 MODEL_NAME:   str = os.getenv("MODEL_NAME",   "gpt-4o")
-OPENAI_KEY:   str = os.getenv("OPENAI_API_KEY", "")
+LLM_API_KEY:  str = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY", "")
+LLM_BASE_URL: Optional[str] = os.getenv("API_BASE_URL") or os.getenv("OPENAI_BASE_URL")
 HF_TOKEN:     str = os.getenv("HF_TOKEN", "")
 LOCAL_IMAGE_NAME: str = os.getenv("LOCAL_IMAGE_NAME", "code-review-env")
-OPENAI_BASE_URL: Optional[str] = os.getenv("OPENAI_BASE_URL")
 
 ENV_NAME = "code-review-env"
 TASKS    = ["simple-bug-detection", "security-audit", "architecture-review"]
 
-client_kwargs: Dict[str, Any] = {"api_key": OPENAI_KEY or "placeholder"}
-if OPENAI_BASE_URL:
-    client_kwargs["base_url"] = OPENAI_BASE_URL
+client_kwargs: Dict[str, Any] = {"api_key": LLM_API_KEY or "placeholder"}
+if LLM_BASE_URL:
+    client_kwargs["base_url"] = LLM_BASE_URL
 client = OpenAI(**client_kwargs)
 
 
@@ -362,7 +360,7 @@ def run_episode(task_name: str) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def main() -> None:
+def _legacy_main() -> None:
     if not env_health():
         print(
             f"ERROR: Cannot reach environment at {API_BASE_URL}",
