@@ -125,7 +125,7 @@ class TestStepEndpoint:
     def test_reward_is_float_in_range(self):
         r = client.post("/step", json={"action_type": "no_op"}).json()["reward"]
         assert isinstance(r, float)
-        assert 0.0 <= r <= 1.0
+        assert 0.0 < r < 1.0
 
     def test_step_counter_increments(self):
         r = client.post("/step", json={"action_type": "no_op"}).json()
