@@ -11,7 +11,7 @@ MANDATORY environment variables:
 
 Required stdout format (one line each, no newlines within a line):
     [START] task=<name> env=<benchmark> model=<model>
-    [STEP]  step=<n> action=<json> reward=<0.00> done=<true|false> error=<msg|null>
+    [STEP]  step=<n> action=<json> reward=<0.0001> done=<true|false> error=<msg|null>
     [END]   success=<true|false> steps=<n> rewards=<r1,r2,...>
 
 Usage:
@@ -312,7 +312,7 @@ def run_episode(task_name: str) -> None:
                 obs    = result["observation"]
                 err    = obs.get("last_action_error") or None
             except Exception as exc:
-                reward, done, err = 0.0, False, str(exc)
+                reward, done, err = 0.0001, False, str(exc)
 
             rewards.append(reward)
             steps = turn
@@ -360,7 +360,7 @@ def run_episode(task_name: str) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def _legacy_main() -> None:
+def _unused_legacy_main() -> None:
     if not env_health():
         print(
             f"ERROR: Cannot reach environment at {API_BASE_URL}",
@@ -394,7 +394,7 @@ def main() -> None:
                 "Inference will exit gracefully after failing to initialize the env.",
                 file=sys.stderr,
             )
-            print("[END] success=false steps=0 rewards=0.00", flush=True)
+            print("[END] success=false steps=0 rewards=0.0001", flush=True)
             return
 
         print("# CodeReview OpenEnv - baseline inference", flush=True)
