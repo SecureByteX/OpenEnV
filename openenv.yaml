@@ -1,0 +1,40 @@
+name: code-review-env
+version: "1.0.0"
+description: >
+  A real-world OpenEnv environment where AI agents act as senior software
+  engineers reviewing pull requests. Agents identify bugs, security
+  vulnerabilities, and design flaws across Python codebases of increasing
+  complexity, earning rewards proportional to review quality and accuracy.
+author: openenv-code-review
+tags:
+  - code-review
+  - software-engineering
+  - security
+  - real-world
+
+tasks:
+  - name: simple-bug-detection
+    description: Find 3 injected bugs in a Python utility module
+    difficulty: easy
+    max_steps: 10
+
+  - name: security-audit
+    description: Identify 3 security vulnerabilities in a Flask auth API
+    difficulty: medium
+    max_steps: 15
+
+  - name: architecture-review
+    description: Find race conditions and design flaws in an order processing pipeline
+    difficulty: hard
+    max_steps: 20
+
+observation_space:
+  type: object
+  description: Code files, PR metadata, existing comments, step info, hints
+
+action_space:
+  type: object
+  description: add_comment, flag_security_issue, suggest_fix, approve, request_changes, no_op
+
+reward_range: [0.0, 1.0]
+episode_length: 20
