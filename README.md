@@ -1,3 +1,14 @@
+---
+title: OpenEnV
+emoji: "🛠️"
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+---
+
 # 🔍 CodeReview OpenEnv
 
 > **OpenEnv-compliant RL environment where AI agents act as senior software engineers reviewing pull requests.**
