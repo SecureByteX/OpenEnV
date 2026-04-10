@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeReview OpenEnv</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#1c2128; --border:#30363d;
+  --text:#e6edf3; --muted:#7d8590; --accent:#f78166; --accent2:#79c0ff;
+  --green:#56d364; --warn:#e3b341; --critical:#ff7b72; --gutter:#21262d;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;min-height:100vh}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;gap:12px;height:54px;position:sticky;top:0;z-index:100}
+.logo{font-family:'DM Serif Display',serif;font-size:20px;color:var(--accent)}.logo span{color:var(--accent2);font-style:italic}
+.badge{background:var(--gutter);border:1px solid var(--border);border-radius:20px;padding:2px 10px;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted)}
+.spacer{flex:1}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:.3s}.dot.online{background:var(--green);box-shadow:0 0 6px var(--green)}
+.layout{display:grid;grid-template-columns:260px 1fr 300px;height:calc(100vh - 54px)}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.panel-hdr{padding:12px 16px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)}
+.task-list{padding:8px;flex:1;overflow-y:auto}
+.task-card{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer;transition:.15s}
+.task-card:hover{background:var(--surface2);border-color:var(--accent2)}
+.task-card.active{background:var(--surface2);border-color:var(--accent2)}
+.task-name{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:var(--accent2);margin-bottom:4px}
+.task-desc{font-size:12px;color:var(--muted);line-height:1.4}
+.diff{display:inline-block;margin-top:6px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;text-transform:uppercase}
+.easy{background:rgba(86,211,100,.15);color:var(--green)}.medium{background:rgba(227,179,65,.15);color:var(--warn)}.hard{background:rgba(255,123,114,.15);color:var(--critical)}
+.actions{padding:12px;border-top:1px solid var(--border)}
+.btn{width:100%;padding:9px 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:.15s;margin-bottom:6px}
+.btn:hover{border-color:var(--accent2);background:rgba(121,192,255,.08)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#0d1117;font-weight:600}.btn.primary:hover{filter:brightness(1.1)}
+.btn.success{border-color:var(--green);color:var(--green)}.btn.success:hover{background:rgba(86,211,100,.08)}
+.btn.danger{border-color:var(--critical);color:var(--critical)}.btn.danger:hover{background:rgba(255,123,114,.08)}
+.code-panel{display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+.pr-hdr{padding:14px 18px;border-bottom:1px solid var(--border);background:var(--surface)}
+.pr-title{font-family:'DM Serif Display',serif;font-size:17px;margin-bottom:4px}
+.pr-desc{font-size:12px;color:var(--muted)}
+.file-tabs{display:flex;gap:1px;background:var(--border);border-bottom:1px solid var(--border)}
+.ftab{padding:7px 16px;font-family:'JetBrains Mono',monospace;font-size:12px;background:var(--surface2);color:var(--muted);cursor:pointer;transition:.15s}
+.ftab.active{background:var(--bg);color:var(--accent2)}
+.code-view{flex:1;overflow:auto}
+table.code{width:100%;border-collapse:collapse}
+.lnum{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);padding:0 10px 0 6px;text-align:right;user-select:none;background:var(--gutter);border-right:1px solid var(--border);width:46px;min-width:46px;vertical-align:top;line-height:20px;cursor:pointer}
+.lnum:hover{color:var(--accent2)}
+.lcode{font-family:'JetBrains Mono',monospace;font-size:12px;padding:0 14px;white-space:pre;line-height:20px;color:var(--text)}
+tr.has-comment{background:rgba(121,192,255,.04)}
+.icomment{padding:3px 14px 3px 52px;font-size:12px;border-left:3px solid var(--accent2);background:rgba(121,192,255,.05)}
+.icomment.critical,.icomment.error{border-color:var(--critical);background:rgba(255,123,114,.06)}
+.icomment.warning{border-color:var(--warn);background:rgba(227,179,65,.05)}
+.right{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;border-bottom:1px solid var(--border)}
+.metric{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px}
+.mlabel{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;margin-bottom:4px}
+.mval{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--accent2);line-height:1}
+.mval.r{color:var(--green)}
+.rbar-wrap{padding:0 12px 12px;border-bottom:1px solid var(--border)}
+.rbar-lbl{font-size:11px;color:var(--muted);margin-bottom:6px;display:flex;justify-content:space-between}
+.rbar{height:6px;background:var(--gutter);border-radius:3px;overflow:hidden}
+.rfill{height:100%;background:var(--green);border-radius:3px;transition:width .4s ease;width:0%}
+.log{flex:1;overflow-y:auto;padding:8px;font-family:'JetBrains Mono',monospace;font-size:11px}
+.ll{padding:3px 6px;border-radius:4px;margin-bottom:2px;color:var(--muted);animation:fi .2s ease}
+.ll.step{color:var(--text)}.ll.reward{color:var(--green)}.ll.error{color:var(--critical)}.ll.info{color:var(--accent2)}
+@keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);gap:8px;padding:40px;text-align:center}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:460px;max-width:90vw}
+.modal h3{font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:16px}
+.fg{margin-bottom:12px}.fg label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
+.fi{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:.15s;resize:vertical}
+.fi:focus{border-color:var(--accent2)}
+.mact{display:flex;gap:8px;margin-top:16px}.mact .btn{flex:1;margin:0}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Code<span>Review</span> OpenEnv</div>
+  <div class="badge">v1.0.0</div>
+  <div class="badge">openenv</div>
+  <div class="spacer"></div>
+  <div class="dot" id="dot"></div>
+  <span id="status-txt" style="font-size:12px;color:var(--muted);margin-left:6px">checking...</span>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="panel-hdr">Tasks</div>
+    <div class="task-list">
+      <div class="task-card active" data-task="simple-bug-detection" onclick="selectTask(this)">
+        <div class="task-name">simple-bug-detection</div>
+        <div class="task-desc">Find 3 bugs in a Python utility module</div>
+        <span class="diff easy">Easy · 10 steps</span>
+      </div>
+      <div class="task-card" data-task="security-audit" onclick="selectTask(this)">
+        <div class="task-name">security-audit</div>
+        <div class="task-desc">Identify security vulnerabilities in a Flask auth API</div>
+        <span class="diff medium">Medium · 15 steps</span>
+      </div>
+      <div class="task-card" data-task="architecture-review" onclick="selectTask(this)">
+        <div class="task-name">architecture-review</div>
+        <div class="task-desc">Find race conditions in an order processing pipeline</div>
+        <span class="diff hard">Hard · 20 steps</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" onclick="startEpisode()">▶ Start Episode</button>
+      <button class="btn success" onclick="openReview('approve')">✓ Approve PR</button>
+      <button class="btn danger" onclick="openReview('request_changes')">✗ Request Changes</button>
+    </div>
+  </aside>
+
+  <main class="code-panel" id="code-panel">
+    <div class="empty" id="empty">
+      <div style="font-size:48px;opacity:.3">🔍</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--text)">Select a task and start an episode</div>
+      <div style="font-size:13px">Code under review will appear here</div>
+    </div>
+    <div id="pr-content" style="display:none;flex-direction:column;height:100%">
+      <div class="pr-hdr">
+        <div class="pr-title" id="pr-title"></div>
+        <div class="pr-desc" id="pr-desc"></div>
+      </div>
+      <div class="file-tabs" id="file-tabs"></div>
+      <div class="code-view" id="code-view"></div>
+    </div>
+  </main>
+
+  <aside class="right">
+    <div class="metrics">
+      <div class="metric"><div class="mlabel">Step</div><div class="mval" id="m-step">—</div></div>
+      <div class="metric"><div class="mlabel">Reward</div><div class="mval r" id="m-reward">—</div></div>
+      <div class="metric"><div class="mlabel">Comments</div><div class="mval" id="m-comments">0</div></div>
+      <div class="metric"><div class="mlabel">Status</div><div class="mval" id="m-status" style="font-size:13px;color:var(--muted)">idle</div></div>
+    </div>
+    <div class="rbar-wrap">
+      <div class="rbar-lbl"><span>Reward</span><span id="r-pct">0%</span></div>
+      <div class="rbar"><div class="rfill" id="r-fill"></div></div>
+    </div>
+    <div class="panel-hdr">Activity Log</div>
+    <div class="log" id="log">
+      <div class="ll info">Ready — select a task and start an episode.</div>
+    </div>
+  </aside>
+</div>
+
+<!-- Comment modal -->
+<div class="overlay" id="comment-modal">
+  <div class="modal">
+    <h3>Add Review Comment</h3>
+    <div class="fg"><label>Line Number</label><input type="number" class="fi" id="c-line" min="1" placeholder="e.g. 6"></div>
+    <div class="fg"><label>Comment</label><textarea class="fi" id="c-msg" rows="3" placeholder="Describe the issue clearly..."></textarea></div>
+    <div class="fg"><label>Severity</label>
+      <select class="fi" id="c-sev">
+        <option value="info">info</option>
+        <option value="warning" selected>warning</option>
+        <option value="error">error</option>
+        <option value="critical">critical</option>
+      </select>
+    </div>
+    <div class="mact">
+      <button class="btn" onclick="closeModal('comment-modal')">Cancel</button>
+      <button class="btn primary" onclick="submitComment()">Add Comment</button>
+    </div>
+  </div>
+</div>
+
+<!-- Review modal -->
+<div class="overlay" id="review-modal">
+  <div class="modal">
+    <h3 id="review-title">Submit Review</h3>
+    <div class="fg"><label>Summary</label><textarea class="fi" id="r-summary" rows="3" placeholder="Brief summary..."></textarea></div>
+    <div class="mact">
+      <button class="btn" onclick="closeModal('review-modal')">Cancel</button>
+      <button class="btn primary" onclick="submitReview()">Submit</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = '';
+let currentTask = 'simple-bug-detection';
+let currentObs = null;
+let active = false;
+let reviewType = null;
+
+function log(msg, type='') {
+  const a = document.getElementById('log');
+  const d = document.createElement('div');
+  d.className = 'll ' + type;
+  d.textContent = new Date().toLocaleTimeString() + ' ' + msg;
+  a.appendChild(d);
+  a.scrollTop = a.scrollHeight;
+}
+
+function setStatus(online) {
+  document.getElementById('dot').className = 'dot' + (online ? ' online' : '');
+  document.getElementById('status-txt').textContent = online ? 'online' : 'offline';
+}
+
+function updateMetrics(obs, reward) {
+  if (obs) {
+    document.getElementById('m-step').textContent = obs.step ?? '—';
+    document.getElementById('m-comments').textContent = (obs.existing_comments || []).length;
+    const done = obs.review_complete;
+    document.getElementById('m-status').textContent = done ? 'done' : 'active';
+    document.getElementById('m-status').style.color = done ? 'var(--green)' : 'var(--text)';
+  }
+  if (reward !== undefined) {
+    const pct = Math.round(reward * 100);
+    document.getElementById('m-reward').textContent = reward.toFixed(2);
+    document.getElementById('r-fill').style.width = pct + '%';
+    document.getElementById('r-pct').textContent = pct + '%';
+  }
+}
+
+async function api(path, method='GET', body=null) {
+  const opts = { method, headers: {'Content-Type':'application/json'} };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(BASE + path, opts);
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+async function checkHealth() {
+  try { await api('/health'); setStatus(true); } catch { setStatus(false); }
+}
+
+function selectTask(el) {
+  document.querySelectorAll('.task-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  currentTask = el.dataset.task;
+  log('Task selected: ' + currentTask, 'info');
+}
+
+async function startEpisode() {
+  log('Starting: ' + currentTask, 'info');
+  try {
+    const obs = await api('/reset', 'POST', {task_name: currentTask});
+    currentObs = obs;
+    active = true;
+    renderCode(obs);
+    updateMetrics(obs, 0);
+    log('Episode started — ' + obs.files.length + ' file(s)', 'step');
+  } catch(e) { log('Error: ' + e.message, 'error'); }
+}
+
+function renderCode(obs) {
+  document.getElementById('empty').style.display = 'none';
+  const pc = document.getElementById('pr-content');
+  pc.style.display = 'flex';
+  document.getElementById('pr-title').textContent = obs.pr_title || '';
+  document.getElementById('pr-desc').textContent = obs.pr_description || '';
+  const tabs = document.getElementById('file-tabs');
+  tabs.innerHTML = '';
+  const files = obs.files || [];
+  if (!files.length) return;
+  files.forEach((f, i) => {
+    const t = document.createElement('div');
+    t.className = 'ftab' + (i===0?' active':'');
+    t.textContent = f.filename;
+    t.onclick = () => {
+      document.querySelectorAll('.ftab').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      renderFile(f, obs.existing_comments||[]);
+    };
+    tabs.appendChild(t);
+  });
+  renderFile(files[0], obs.existing_comments||[]);
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderFile(file, comments) {
+  const byLine = {};
+  (comments||[]).forEach(c => { if(!byLine[c.line])byLine[c.line]=[];byLine[c.line].push(c); });
+  const lines = (file.content||'').split('\n');
+  const tbl = document.createElement('table');
+  tbl.className = 'code';
+  lines.forEach((line, idx) => {
+    const n = idx + 1;
+    const hc = !!byLine[n];
+    const tr = document.createElement('tr');
+    if (hc) tr.className = 'has-comment';
+    const tn = document.createElement('td');
+    tn.className = 'lnum';
+    tn.textContent = n;
+    tn.title = 'Click to add comment';
+    tn.onclick = () => openComment(n);
+    const tc = document.createElement('td');
+    tc.className = 'lcode';
+    tc.textContent = line;
+    tr.appendChild(tn); tr.appendChild(tc);
+    tbl.appendChild(tr);
+    if (hc) {
+      byLine[n].forEach(c => {
+        const cr = document.createElement('tr');
+        const cd = document.createElement('td');
+        cd.colSpan = 2;
+        cd.className = 'icomment ' + (c.severity||'warning');
+        cd.innerHTML = `<strong>[${(c.severity||'warning').toUpperCase()}]</strong> ${esc(c.message)}`;
+        cr.appendChild(cd);
+        tbl.appendChild(cr);
+      });
+    }
+  });
+  const view = document.getElementById('code-view');
+  view.innerHTML = '';
+  view.appendChild(tbl);
+}
+
+function openComment(line) {
+  if (!active) { log('Start an episode first', 'error'); return; }
+  document.getElementById('c-line').value = line || '';
+  document.getElementById('c-msg').value = '';
+  document.getElementById('comment-modal').classList.add('open');
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+async function submitComment() {
+  const line = parseInt(document.getElementById('c-line').value);
+  const message = document.getElementById('c-msg').value.trim();
+  const severity = document.getElementById('c-sev').value;
+  if (!line || !message) { log('Line and message required', 'error'); return; }
+  closeModal('comment-modal');
+  await doStep({action_type:'add_comment', line, message, severity});
+}
+
+function openReview(type) {
+  if (!active) { log('Start an episode first', 'error'); return; }
+  reviewType = type;
+  document.getElementById('review-title').textContent =
+    type === 'approve' ? '✓ Approve Pull Request' : '✗ Request Changes';
+  document.getElementById('r-summary').value = '';
+  document.getElementById('review-modal').classList.add('open');
+}
+
+async function submitReview() {
+  const summary = document.getElementById('r-summary').value.trim();
+  closeModal('review-modal');
+  await doStep({action_type: reviewType, summary});
+}
+
+async function doStep(action) {
+  if (!active) return;
+  log('→ ' + action.action_type + (action.line ? ' (L'+action.line+')' : ''), 'step');
+  try {
+    const result = await api('/step', 'POST', action);
+    currentObs = result.observation;
+    const reward = result.reward;
+    const done = result.done;
+    log('← reward=' + reward.toFixed(2) + ' done=' + done, 'reward');
+    if (result.observation.last_action_error)
+      log('  ✗ ' + result.observation.last_action_error, 'error');
+    if (result.observation.hint)
+      log('  ⚠ ' + result.observation.hint, 'info');
+    renderCode(result.observation);
+    updateMetrics(result.observation, reward);
+    if (done) { active = false; log('Episode complete! Final reward: ' + reward.toFixed(2), 'info'); }
+  } catch(e) { log('Error: ' + e.message, 'error'); }
+}
+
+checkHealth();
+setInterval(checkHealth, 15000);
+</script>
+</body>
+</html>

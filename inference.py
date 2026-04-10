@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""
+inference.py  —  Baseline inference script for CodeReview OpenEnv.
+
+MANDATORY environment variables:
+    OPENAI_API_KEY   — OpenAI (or compatible) API key
+    API_BASE_URL     — Server base URL  (default: http://localhost:7860)
+    MODEL_NAME       — Model identifier (default: gpt-4o)
+    HF_TOKEN         — HuggingFace token for private Spaces (optional)
+    LOCAL_IMAGE_NAME — Docker image name (optional, for validate-submission.sh)
+
+Required stdout format (one line each, no newlines within a line):
+    [START] task=<name> env=<benchmark> model=<model>
+    [STEP]  step=<n> action=<json> reward=<0.00> done=<true|false> error=<msg|null>
+    [END]   success=<true|false> steps=<n> rewards=<r1,r2,...>
+
+Usage:
+    export OPENAI_API_KEY=sk-...
+    export API_BASE_URL=http://localhost:7860
+    export MODEL_NAME=gpt-4o
+    python inference.py
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from typing import Any, Dict, List, Optional
+
+import requests
+from openai import OpenAI
+
+# ---------------------------------------------------------------------------
+# Configuration (all from environment variables)
+# ---------------------------------------------------------------------------
+
+API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:7860").rstrip("/")
+MODEL_NAME:   str = os.getenv("MODEL_NAME",   "gpt-4o")
+OPENAI_KEY:   str = os.getenv("OPENAI_API_KEY", "")
+HF_TOKEN:     str = os.getenv("HF_TOKEN", "")
+LOCAL_IMAGE_NAME: str = os.getenv("LOCAL_IMAGE_NAME", "code-review-env")
+
+ENV_NAME = "code-review-env"
+TASKS    = ["simple-bug-detection", "security-audit", "architecture-review"]
+
+client = OpenAI(api_key=OPENAI_KEY or "placeholder")
+
+
+# ---------------------------------------------------------------------------
+# Environment HTTP helpers
+# ---------------------------------------------------------------------------
+
+def _headers() -> Dict[str, str]:
+    h = {"Content-Type": "application/json"}
+    if HF_TOKEN:
+        h["Authorization"] = f"Bearer {HF_TOKEN}"
+    return h
+
+
+def env_reset(task_name: str) -> Dict[str, Any]:
+    r = requests.post(
+        f"{API_BASE_URL}/reset",
+        json={"task_name": task_name},
+        headers=_headers(),
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def env_step(action: Dict[str, Any]) -> Dict[str, Any]:
+    r = requests.post(
+        f"{API_BASE_URL}/step",
+        json=action,
+        headers=_headers(),
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def env_health() -> bool:
+    try:
+        r = requests.get(f"{API_BASE_URL}/health", timeout=10)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Agent (LLM reasoning)
+# ---------------------------------------------------------------------------
+
+SYSTEM_PROMPT = """\
+You are a senior software engineer performing a thorough pull-request code review.
+
+Your goal:
+  1. Read all code files carefully.
+  2. Identify bugs, security vulnerabilities, race conditions, and design flaws.
+  3. Add specific inline comments on the problematic lines.
+  4. Submit a final review decision.
+
+Available actions — respond with ONLY a valid JSON object (no markdown, no explanation):
+
+Add an inline comment:
+  {"action_type": "add_comment", "line": <int>, "message": "<description>", "severity": "<info|warning|error|critical>"}
+
+Flag a security vulnerability (auto-sets critical severity):
+  {"action_type": "flag_security_issue", "line": <int>, "description": "<security issue>"}
+
+Suggest a corrected version:
+  {"action_type": "suggest_fix", "line": <int>, "suggestion": "<corrected code>"}
+
+Approve the PR (only when no issues found):
+  {"action_type": "approve", "summary": "<rationale>"}
+
+Request changes (when issues found):
+  {"action_type": "request_changes", "summary": "<summary of required changes>"}
+
+Critical rules:
+  - Lines are 1-indexed.
+  - Use "critical" or "error" severity for bugs/security, "warning" for design, "info" for style.
+  - Be specific: name the exact variable, function, or pattern causing the problem.
+  - You MUST end the episode by calling approve or request_changes.
+  - Do NOT approve a PR that has bugs or security vulnerabilities.
+  - Review ALL files before making a final decision.
+"""
+
+
+def _build_prompt(obs: Dict[str, Any], turn: int) -> str:
+    parts = [
+        f"=== CODE REVIEW — Turn {turn} | Task: {obs.get('task_name')} | Step: {obs.get('step')} ===",
+        f"PR Title: {obs.get('pr_title', '')}",
+        f"Description: {obs.get('pr_description', '')}",
+        "",
+    ]
+
+    for f in obs.get("files", []):
+        parts.append(f"── FILE: {f['filename']} ──────────────────────────────")
+        for i, line in enumerate(f["content"].splitlines(), start=1):
+            parts.append(f"{i:4d} | {line}")
+        parts.append("")
+
+    comments = obs.get("existing_comments", [])
+    if comments:
+        parts.append("── Your comments so far ────────────────────────────────")
+        for c in comments:
+            parts.append(f"  Line {c['line']:3d} [{c['severity'].upper()}] {c['message']}")
+        parts.append("")
+
+    if obs.get("hint"):
+        parts.append(f"⚠ HINT: {obs['hint']}")
+    if obs.get("last_action_error"):
+        parts.append(f"⚠ LAST ACTION ERROR: {obs['last_action_error']}")
+        parts.append("  Please fix your action format and try again.")
+    if obs.get("last_action_result"):
+        parts.append(f"✓ LAST ACTION: {obs['last_action_result']}")
+
+    parts.append("")
+    parts.append("Respond with ONLY a JSON object for your next action.")
+    return "\n".join(parts)
+
+
+def _parse_action(raw: str) -> Dict[str, Any]:
+    """Parse LLM response to action dict, with fallback to no_op."""
+    text = raw.strip()
+    # Strip markdown fences
+    if "```" in text:
+        for block in text.split("```"):
+            block = block.strip().lstrip("json").strip()
+            if block.startswith("{"):
+                text = block
+                break
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        s = text.find("{")
+        e = text.rfind("}") + 1
+        if s >= 0 and e > s:
+            try:
+                return json.loads(text[s:e])
+            except json.JSONDecodeError:
+                pass
+    return {"action_type": "no_op"}
+
+
+def get_agent_action(
+    obs: Dict[str, Any],
+    history: List[Dict],
+    turn: int,
+) -> tuple[Dict[str, Any], str]:
+    """Call LLM and return (action_dict, raw_response)."""
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages.extend(history[-6:])  # keep last 3 exchanges
+    messages.append({"role": "user", "content": _build_prompt(obs, turn)})
+
+    resp = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=messages,
+        temperature=0.1,
+        max_tokens=512,
+    )
+    raw = resp.choices[0].message.content or ""
+    return _parse_action(raw), raw
+
+
+# ---------------------------------------------------------------------------
+# Episode runner
+# ---------------------------------------------------------------------------
+
+def run_episode(task_name: str) -> None:
+    """Run one complete episode and emit required stdout lines."""
+
+    # [START]
+    print(f"[START] task={task_name} env={ENV_NAME} model={MODEL_NAME}", flush=True)
+
+    rewards: List[float] = []
+    steps: int = 0
+    success: bool = False
+    history: List[Dict] = []
+
+    try:
+        obs = env_reset(task_name)
+
+        for turn in range(1, 999):
+            action_dict, raw_text = get_agent_action(obs, history, turn)
+            history.append({"role": "assistant", "content": raw_text})
+
+            try:
+                result = env_step(action_dict)
+                reward = round(float(result["reward"]), 2)
+                done   = bool(result["done"])
+                obs    = result["observation"]
+                err    = obs.get("last_action_error") or None
+            except Exception as exc:
+                reward, done, err = 0.0, False, str(exc)
+
+            rewards.append(reward)
+            steps = turn
+
+            feedback = obs.get("last_action_result") or ""
+            if err:
+                feedback += f" ERROR: {err}"
+            history.append({"role": "user", "content": f"[env] {feedback}"})
+
+            # [STEP]
+            action_str = json.dumps(action_dict, separators=(",", ":"))
+            error_str  = err if err else "null"
+            print(
+                f"[STEP] step={turn}"
+                f" action={action_str}"
+                f" reward={reward:.2f}"
+                f" done={'true' if done else 'false'}"
+                f" error={error_str}",
+                flush=True,
+            )
+
+            if done:
+                success = reward >= 0.5
+                break
+
+    except Exception as exc:
+        if not rewards:
+            rewards.append(0.0)
+        print(
+            f"[STEP] step={steps + 1} action={{}} reward=0.00 done=false error={exc}",
+            flush=True,
+        )
+
+    # [END]
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(
+        f"[END] success={'true' if success else 'false'}"
+        f" steps={steps}"
+        f" rewards={rewards_str}",
+        flush=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    if not env_health():
+        print(
+            f"ERROR: Cannot reach environment at {API_BASE_URL}",
+            file=sys.stderr,
+        )
+        print(
+            "Start the server first:  ./run_local.sh server",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print("# CodeReview OpenEnv — baseline inference", flush=True)
+    print(f"# server={API_BASE_URL}  model={MODEL_NAME}", flush=True)
+    print("", flush=True)
+
+    for task in TASKS:
+        run_episode(task)
+        time.sleep(1)
+
+
+if __name__ == "__main__":
+    main()
